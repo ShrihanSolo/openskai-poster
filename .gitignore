@@ -1,0 +1,9 @@
+# Render archive: render.py writes a numbered directory of full-resolution PNGs
+# per run. It is the visual history of the poster and worth keeping on disk, but
+# it is ~165 MB and none of it is source.
+renders/
+
+# Single-file bundle written by build_artifact.py, regenerated on demand.
+build/
+
+__pycache__/

@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Do we need full field level inference?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="poster_style.css">
+</head>
+<body>
+<div class="stage"><div class="sheet" id="sheet"></div></div>
+
+<script src="poster_config.js"></script>
+<script>
+/* ===========================================================================
+   Renderer. Walks the POSTER object from poster_config.js and builds the page.
+   Edit this only to change the poster's structure; content lives in the config.
+   =========================================================================== */
+
+/* --- Type scale ----------------------------------------------------------
+   Every size on the poster is a CSS variable declared in poster_style.css.
+   POSTER.type overrides them by name, so the config can retune the type
+   without opening the stylesheet. A plain number is read as points; a string
+   is passed through as written, so "1.2in" or "62.5pt" both work. Anything the
+   config leaves out keeps the stylesheet's value, so a partial `type` block is
+   fine -- and a key that isn't in this map is reported on screen rather than
+   ignored, since a typo would otherwise look like "the setting did nothing".
+   ------------------------------------------------------------------------ */
+const TYPE_VARS = {
+  /* header */
+  title:           "--t-title",
+  subtitle:        "--t-subtitle",
+  author:          "--t-author",
+  affil:           "--t-affil",
+  qrCaption:       "--t-qr",
+
+  /* shared across the bands */
+  eyebrow:         "--t-eyebrow",
+  bandHeading:     "--t-band",
+  lede:            "--t-lede",
+  body:            "--t-body",
+  callout:         "--t-callout",
+  figureCaption:   "--t-caption",
+  figureTag:       "--t-figtag",
+  note:            "--t-small",
+
+  /* the fact strip */
+  factLabel:       "--t-fact-label",
+  factKey:         "--t-fact-key",
+  factValue:       "--t-fact-value",
+
+  /* the three approach columns */
+  approachDim:     "--t-dim",
+  approachDimLabel:"--t-dim-label",
+  approachName:    "--t-col",
+  approachBody:    "--t-colbody",
+
+  /* the results band */
+  asideHeading:    "--t-aside-head",
+  asideBody:       "--t-aside",
+  discussionLede:  "--t-mid-lede",
+  discussionBody:  "--t-mid-body",
+  statValue:       "--t-stat",
+  statLabel:       "--t-stat-label",
+
+  /* cost band and footer */
+  costLegend:      "--t-legend",
+  futureItem:      "--t-future",
+  reference:       "--t-ref",
+  colophon:        "--t-colophon",
+
+  /* only used by the numbers table, which is not currently rendered */
+  table:           "--t-table",
+};
+
+/* Sizes inside the two inline SVGs. These are viewBox units, not points: the
+   drawing scales with its column, so one unit is about 0.8 pt at print size in
+   a schematic and 0.72 pt in the cost chart. They are here so every piece of
+   text on the poster is reachable from the config. */
+const TYPE_SVG = Object.assign({
+  schematicCaption: 17,
+  schematicAxis: 15,
+  costTick: 19,
+  costValue: 19,
+  costRowLabel: 21,
+  costAxis: 20,
+}, (POSTER.type && POSTER.type.svg) || {});
+
+function applyType(t) {
+  if (!t) return;
+  const unknown = [];
+  Object.keys(t).forEach((k) => {
+    if (k === "svg") return;
+    const v = TYPE_VARS[k];
+    if (!v) { unknown.push(k); return; }
+    document.documentElement.style.setProperty(
+      v, typeof t[k] === "number" ? t[k] + "pt" : t[k]);
+  });
+  return unknown;
+}
+const UNKNOWN_TYPE_KEYS = applyType(POSTER.type) || [];
+
+/* --- $math$ --------------------------------------------------------------
+   Inline maths, written as a small subset of LaTeX between dollar signs:
+
+       "a flow learns $p(Ω_m, σ_8 | s)$ from the summary $s$"
+
+   It understands `_` and `^` (brace them for more than one character), \name
+   for Greek letters, operators and relations, \text{...} for upright words,
+   and TeX's spacing: none around what you type, a thin space after a comma,
+   a wider one around = and the conditional bar. Variables come out italic;
+   digits, capital Greek and function names (log, max, ...) stay upright, as
+   TeX sets them.
+
+   Greek can be typed straight in as Unicode, which reads better in the config
+   and needs no backslash: $Ω_m$ is the same as $\\Omega_m$. Remember that a
+   backslash inside a JS string has to be doubled.
+
+   Spaces inside $...$ are ignored, so $z = 1$ and $z=1$ come out the same.
+   Units and other upright words want \text: $320\text{ Mpc}/h$.
+
+   A \command it doesn't know, and an unpaired $, are highlighted like a TODO
+   rather than dropped, so a typo shows up on screen instead of printing.
+
+   Body text only. The SVG labels -- approaches[].stages and the cost chart --
+   are drawn as SVG rather than HTML, so $...$ there would print literally.
+   ------------------------------------------------------------------------ */
+const MATH_SYM = {
+  Omega: "Ω", Sigma: "Σ", Delta: "Δ", Lambda: "Λ", Phi: "Φ", Theta: "Θ",
+  Gamma: "Γ", Psi: "Ψ", Pi: "Π", Xi: "Ξ", Upsilon: "Υ",
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", zeta: "ζ",
+  eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν",
+  xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", upsilon: "υ", phi: "φ",
+  chi: "χ", psi: "ψ", omega: "ω",
+  nabla: "∇", partial: "∂", infty: "∞", ell: "ℓ", hbar: "ℏ",
+  times: "×", cdot: "·", pm: "±", mp: "∓", div: "÷",
+  approx: "≈", simeq: "≃", sim: "∼", leq: "≤", le: "≤", geq: "≥", ge: "≥",
+  neq: "≠", ne: "≠", ll: "≪", gg: "≫", equiv: "≡", propto: "∝",
+  to: "→", in: "∈", subset: "⊂", perp: "⊥",
+  langle: "⟨", rangle: "⟩", int: "∫", sum: "∑", prod: "∏", sqrt: "√",
+};
+
+/* Upright, and set as one word: TeX's \log, \max and friends. */
+const MATH_OPS = new Set([
+  "log", "ln", "exp", "sin", "cos", "tan", "sinh", "cosh", "tanh",
+  "min", "max", "argmin", "argmax", "det", "diag", "tr", "erf", "var", "cov",
+]);
+
+/* TeX gives these space either side; everything else is set tight. */
+const MATH_BIN = new Set(["+", "−", "×", "·", "±", "∓", "÷"]);
+const MATH_REL = new Set([
+  "=", "<", ">", "≈", "≃", "∼", "≤", "≥", "≠", "≡", "≪", "≫",
+  "→", "∝", "∈", "⊂", "⊥", "|",
+]);
+
+const mathEsc = (c) =>
+  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c;
+
+/* One symbol, classed by what TeX would call it. */
+function mathSym(ch) {
+  const c = mathEsc(ch);
+  if (/[α-ω]/.test(ch)) return `<span class="mvar">${c}</span>`;
+  if (MATH_BIN.has(ch)) return `<span class="mbin">${c}</span>`;
+  if (MATH_REL.has(ch)) return `<span class="mrel">${c}</span>`;
+  return c;
+}
+
+function mathHTML(src) {
+  let out = "", i = 0;
+
+  /* A braced group, returned as written -- what \text wants. */
+  function braced(j) {
+    if (src[j] !== "{") return [src[j] || "", j + 1];
+    let depth = 1, k = j + 1;
+    while (k < src.length && depth) {
+      if (src[k] === "{") depth++;
+      else if (src[k] === "}") depth--;
+      k++;
+    }
+    return [src.slice(j + 1, k - (depth ? 0 : 1)), k];
+  }
+
+  /* The argument of _ or ^: a braced group, or the single token after it. */
+  function atom(j) {
+    if (j >= src.length) return ["", j];
+    if (src[j] !== "{") return step(j);
+    let depth = 1, k = j + 1;
+    while (k < src.length && depth) {
+      if (src[k] === "{") depth++;
+      else if (src[k] === "}") depth--;
+      k++;
+    }
+    return [mathHTML(src.slice(j + 1, k - (depth ? 0 : 1))), k];
+  }
+
+  function step(j) {
+    const c = src[j];
+
+    if (c === "\\") {
+      const m = /^\\(?:([A-Za-z]+)|([\s\S]))/.exec(src.slice(j));
+      if (!m) return ["", j + 1];
+      const end = j + m[0].length, name = m[1];
+      if (name === "text") {
+        const [raw, k] = braced(end);
+        return [`<span class="mtext">${raw.split("").map(mathEsc).join("")}</span>`, k];
+      }
+      if (name === "mid") return [`<span class="mrel">|</span>`, end];
+      if (name && MATH_OPS.has(name)) return [`<span class="mop">${name}</span>`, end];
+      if (name && MATH_SYM[name] !== undefined) return [mathSym(MATH_SYM[name]), end];
+      if (name) return [`<span class="todo">\\${name}</span>`, end];
+      const space = { ",": "mthin", ":": "mmed", " ": "mmed", ";": "mthick" }[m[2]];
+      if (space) return [`<span class="${space}"></span>`, end];
+      return [mathEsc(m[2]), end];        /* \{ \} \_ \$ ... */
+    }
+
+    /* A group on its own: \sqrt{...}, or just bracketing for clarity. */
+    if (c === "{") return atom(j);
+    if (c === "}") return ["", j + 1];
+
+    if (c === "_" || c === "^") {
+      const [inner, k] = atom(j + 1);
+      const tag = c === "_" ? "sub" : "sup";
+      return [`<${tag}>${inner}</${tag}>`, k];
+    }
+
+    if (/\s/.test(c)) return ["", j + 1];  /* TeX ignores spaces in maths */
+
+    if (/[A-Za-z]/.test(c)) {
+      const run = /^[A-Za-z]+/.exec(src.slice(j))[0];
+      const cls = MATH_OPS.has(run) ? "mop" : "mvar";
+      return [`<span class="${cls}">${run}</span>`, j + run.length];
+    }
+
+    if (/[0-9]/.test(c)) {
+      const run = /^[0-9.]+/.exec(src.slice(j))[0];
+      return [run, j + run.length];
+    }
+
+    if (c === ",") return [`<span class="mpunct">,</span>`, j + 1];
+    if (c === "-") return [mathSym("−"), j + 1];
+    return [mathSym(c), j + 1];
+  }
+
+  while (i < src.length) {
+    const [html, next] = step(i);
+    out += html;
+    i = next > i ? next : i + 1;
+  }
+  return out;
+}
+
+/* Turn $...$ into maths, then highlight anything still marked TODO -- and any
+   lone $ left over, which means a pair someone forgot to close -- so neither
+   can reach the printer unnoticed. */
+const mark = (s) =>
+  String(s)
+    .replace(/\$([^$]+)\$/g, (_, body) => `<span class="math">${mathHTML(body)}</span>`)
+    .replace(/\$/g, () => `<span class="todo">$</span>`)
+    .replace(/TODO[^.<]*\.?/g, (m) => `<span class="todo">${m}</span>`);
+
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html != null) n.innerHTML = mark(html);
+  return n;
+};
+
+const sheet = document.getElementById("sheet");
+const add = (n) => { sheet.appendChild(n); return n; };
+
+/* One baseline: condensed head, a hairline out to the margin, then the eyebrow
+   right-aligned. Stacking the eyebrow above cost 0.45 in per band, which on a
+   fixed-height sheet is a whole paragraph of body copy. */
+function bandHead(eyebrow, heading) {
+  const h = el("div", "band-head");
+  /* A band can have a rule without a heading -- the fact strip does, since its
+     own label sits inside the strip. Skipping the h2 rather than drawing an
+     empty one is what puts the hairline at the left margin. */
+  if (heading) h.appendChild(el("h2", null, heading));
+  h.appendChild(el("div", "hair"));
+  if (eyebrow) h.appendChild(el("div", "eyebrow", eyebrow));
+  return h;
+}
+
+/* Captions are off across the poster: every figure here is read from four feet
+   away and the band text already says what it shows. A figure draws one only if
+   its `caption` in poster_config.js is a non-empty string. */
+/* `f.tag`, if set, is a short label stamped in the figure's top right corner --
+   "Preliminary" on the contour. It is positioned against the FIGURE box, which
+   is the image box only while the image fills its track: the contour's track in
+   .results-grid is set to exactly the contour's width, so it does. If you cap a
+   tagged figure by height in a wider track, the tag drifts off its corner. */
+const figure = (f, cls) => {
+  const n = el("figure", cls);
+  n.innerHTML = `<img src="${f.src}" alt="">` +
+                (f.tag ? `<span class="fig-tag">${mark(f.tag)}</span>` : "") +
+                (f.caption ? `<figcaption>${mark(f.caption)}</figcaption>` : "");
+  return n;
+};
+
+/* --- Header -------------------------------------------------------------- */
+/* The title gets a row of its own, the full width of the sheet. It used to sit
+   in a column beside the logos, which capped it at whatever width the logos left
+   over -- a long title then had to be set small to stay on one line. Below it,
+   the byline and the logos share a second row, and that row is as tall as the
+   byline is, so the logos have room to be large. */
+function header(m) {
+  const h = el("header", "header");
+  h.appendChild(el("h1", "title", m.title));
+
+  const row = el("div", "header-row");
+  const left = el("div");
+
+  if (m.subtitle) left.appendChild(el("p", "subtitle", m.subtitle));
+
+  const au = el("p", "authors");
+  au.innerHTML = mark(m.authors
+    .map((a) => `${a.name}<sup>${(a.sups || []).join(",")}</sup>`)
+    .join(", &nbsp;"));
+  left.appendChild(au);
+
+  const af = el("div", "affils");
+  m.affiliations.forEach((t, i) => {
+    const row = el("div");
+    row.innerHTML = `<sup>${i + 1}</sup><span>${mark(t)}</span>`;
+    af.appendChild(row);
+  });
+  left.appendChild(af);
+  row.appendChild(left);
+
+  const logos = el("div", "logos");
+  m.logos.forEach((l) => {
+    const img = el("img");
+    img.src = l.src;
+    img.alt = l.alt;
+    img.style.height = l.height + "in";
+    logos.appendChild(img);
+  });
+  if (m.qr && m.qr.src) {
+    const q = el("div", "qr");
+    q.innerHTML = `<img src="${m.qr.src}" alt="QR code">` +
+                  (m.qr.caption ? `<span>${mark(m.qr.caption)}</span>` : "");
+    logos.appendChild(q);
+  }
+  row.appendChild(logos);
+  h.appendChild(row);
+  add(h);
+}
+
+/* --- Band 1: the question ------------------------------------------------ */
+function questionBand(q) {
+  const band = el("section", "band");
+  band.appendChild(bandHead(q.eyebrow, q.heading));
+
+  const grid = el("div", "question-grid");
+  const left = el("div");
+  left.appendChild(el("p", "lede", q.lede));
+  q.body.forEach((p) => left.appendChild(el("p", "body-text", p)));
+  left.appendChild(el("div", "callout", q.box));
+  grid.appendChild(left);
+  grid.appendChild(figure(q.figure));
+
+  band.appendChild(grid);
+  add(band);
+}
+
+/* --- Band 1.5: the shared mock, as one strip -----------------------------
+   The band rule carries only its eyebrow: the strip's own label is inside the
+   wash, on the left of the facts, so a heading above would say it twice. */
+function factStrip(s) {
+  const band = el("section", "band");
+  band.appendChild(bandHead(s.eyebrow, null));
+
+  const strip = el("div", "factstrip");
+  strip.appendChild(el("div", "fs-label", s.label));
+  const facts = el("div", "facts");
+  s.facts.forEach((f) => {
+    const d = el("dl", "fact");
+    d.appendChild(el("dt", null, f.k));
+    d.appendChild(el("dd", null, f.v));
+    facts.appendChild(d);
+  });
+  strip.appendChild(facts);
+  band.appendChild(strip);
+  add(band);
+}
+
+/* --- Schematics ----------------------------------------------------------
+   Hand-drawn inline SVG rather than images: vector, crisp at print size, and
+   editable right here. All three share a viewBox so they line up.
+   ------------------------------------------------------------------------ */
+/* The tile the P(k) and CNN drawings open with: the real z = 1 evolved field,
+   the same simulation, transform and colour limits as the Full Field column's
+   z1 cube -- figures/make_fl_cubes.py writes both, so the three columns of this
+   band show one universe rather than three unrelated pictures. The path lives
+   in poster_config.js (POSTER.fieldTile), which is what lets build_artifact.py
+   inline it.
+
+   The PNG is square and the box is 128x118, so "slice" crops a little off the
+   top and bottom instead of squashing the field. The frame keeps the column's
+   colour on the tile, which is the only thing the old drawing did that this
+   one would otherwise lose. */
+const TILE = { x: 4, y: 10, w: 128, h: 118 };
+
+const fieldTile = (c, src) => `
+  <g>
+    <image href="${src}" x="${TILE.x}" y="${TILE.y}" width="${TILE.w}" height="${TILE.h}"
+           preserveAspectRatio="xMidYMid slice"/>
+    <rect x="${TILE.x}" y="${TILE.y}" width="${TILE.w}" height="${TILE.h}"
+          fill="none" stroke="${c}" stroke-width="2.5"/>
+  </g>`;
+
+/* The drawn tile this replaced -- dots on paper, standing in for a field before
+   there was a real one to show. Kept, not deleted, the same way the old Full
+   Field drawing below is: put the two back together if the images ever go away.
+
+  const FIELD_DOTS = [
+    [26, 24, 4], [52, 40, 7], [78, 18, 3], [98, 48, 5], [34, 66, 6],
+    [64, 78, 9], [88, 88, 4], [22, 96, 5], [50, 108, 4], [100, 108, 6],
+    [70, 36, 3], [40, 92, 3], [92, 66, 3],
+  ];
+  const fieldTile = (c) => `
+    <g transform="translate(4,10)">
+      <rect width="128" height="118" fill="#f7f2f0" stroke="${c}" stroke-width="2.5"/>
+      ${FIELD_DOTS.map(([cx, cy, r]) =>
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}" opacity="0.55"/>`).join("")}
+    </g>`;
+*/
+
+/* The Power Spectrum column's middle stage: a log-log P(k) plot. The path is a
+   real linear spectrum -- Eisenstein & Hu (1998) no-wiggle, Om=0.30, Ob=0.049,
+   h=0.70, ns=0.96, k = 0.004..1.5 h/Mpc -- already mapped into viewBox units by
+   figures/make_pk_icon.py. Regenerate with
+
+       /home/node/.conda/envs/simple/bin/python figures/make_pk_icon.py
+
+   and paste the one line it prints; the plot box below (PK_BOX) must match the
+   one in that script. */
+const PK_BOX = { x0: 246, x1: 380, y0: 122, y1: 20 };
+const PK_CURVE = "M 246.0 32.5 L 251.7 30.0 L 257.5 27.9 L 263.2 26.1 L 269.0 24.7 L 274.7 24.0 L 280.4 24.1 L 286.2 25.4 L 291.9 27.4 L 297.7 30.1 L 303.4 33.1 L 309.1 36.7 L 314.9 40.9 L 320.6 45.6 L 326.3 51.0 L 332.1 56.8 L 337.8 63.1 L 343.6 69.7 L 349.3 76.7 L 355.0 84.0 L 360.8 91.5 L 366.5 99.1 L 372.3 107.0 L 378.0 115.0";
+
+/* `k` scales the arrow's weight and head without moving where it starts or
+   ends. The CNN row carries four items where the others carry two or three, so
+   its connectors are drawn light: the arrows there are the least informative
+   ink in the drawing and should not compete with the boxes. */
+const arrow = (x1, x2, y, k = 1) => `
+  <g stroke="#5a504a" stroke-width="${3 * k}" fill="none">
+    <line x1="${x1}" y1="${y}" x2="${x2 - 10 * k}" y2="${y}"/>
+    <path d="M ${x2 - 14 * k} ${y - 7 * k} L ${x2} ${y} L ${x2 - 14 * k} ${y + 7 * k}"
+          fill="#5a504a" stroke="none"/>
+  </g>`;
+
+/* An isometric box for the CNN's conv blocks: a square front face of side `s`
+   with top and right faces pushed back by depth `d`. Shrinking `s` while growing
+   `d` across four boxes is the standard way to draw a conv stack -- here it is
+   the real one from cnn/cnn_training.py: 128^3 down to 8^3, 8 up to 64 channels. */
+const cuboid = (x, yc, s, d, c) => {
+  const y = yc - s / 2;
+  return `
+    <g stroke="${c}" stroke-width="1.5" stroke-linejoin="round">
+      <path d="M ${x} ${y} L ${x + d} ${y - d} L ${x + s + d} ${y - d} L ${x + s} ${y} Z"
+            fill="${c}" opacity="0.38"/>
+      <path d="M ${x + s} ${y} L ${x + s + d} ${y - d} L ${x + s + d} ${y + s - d} L ${x + s} ${y + s} Z"
+            fill="${c}" opacity="0.55"/>
+      <rect x="${x}" y="${y}" width="${s}" height="${s}" fill="${c}" opacity="0.78"/>
+    </g>`;
+};
+
+/* --- The strip's own geometry --------------------------------------------
+   Every column's schematic is one SVG scaled to the column width, so the
+   viewBox aspect is what sets the strip's printed height: 620x227 in a 7.1in
+   column is 2.6in tall. `h` therefore moves band 2's height and everything
+   below it on the sheet -- see README before changing it.
+
+   The strip was made taller for the Full Field cubes, which have two items in
+   the row instead of three and so can use the height. The P(k) and CNN drawings
+   do NOT scale up with it: both already run nearly the full 620 units wide --
+   the CNN's regression head ends at ~606 -- so there is no room to grow them
+   without re-laying them out. They keep their own coordinates and `native()`
+   just recentres them in the taller box.
+   ------------------------------------------------------------------------ */
+const SCHEM = { w: 620, h: 227, dy: 31, capY: 219 };
+
+/* Drop a drawing written in the original 620x168 space into the taller box.
+   Nothing inside is rescaled: PK_BOX and PK_CURVE are coupled to
+   figures/make_pk_icon.py, and the CNN geometry is fitted to its own widths. */
+const native = (inner) => `<g transform="translate(0,${SCHEM.dy})">${inner}</g>`;
+
+const cap = (x, t) =>
+  `<text x="${x}" y="${SCHEM.capY}" font-family="IBM Plex Mono, monospace" font-size="${TYPE_SVG.schematicCaption}"
+         fill="#5a504a" text-anchor="middle">${t}</text>`;
+
+/* `a` is one entry of POSTER.approaches; `tile` is POSTER.fieldTile, the z = 1
+   field image the P(k) and CNN drawings open with.
+
+   a.stages is the captions under the drawing: three for P(k), four for the CNN
+   (which has a regression head after its summary), two for Full Field. Missing
+   entries draw nothing. a.cubes and a.arrowLabel are Full Field's alone.
+
+   Every cap() x below is the CENTRE of the thing it names, worked out from that
+   item's own drawn extent -- not evenly spaced, because the items are not. If
+   you move a box, move its caption with it.
+
+   Captions sit outside native(), on the strip's own baseline, so all three
+   columns' captions line up however tall the drawings are. */
+function schematic(a, tile) {
+  const { schematic: kind, color: c, stages, cubes, arrowLabel } = a;
+  const [s0, s1, s2, s3] = [0, 1, 2, 3].map((i) => (stages && stages[i]) || "");
+  const open = `<svg viewBox="0 0 ${SCHEM.w} ${SCHEM.h}" role="img" aria-hidden="true">`;
+
+  if (kind === "pk") {
+    const b = PK_BOX;
+    return open + native(
+      fieldTile(c, tile) + arrow(148, 208, 75) + `
+      <g>
+        <path d="M ${b.x0} ${b.y1 - 6} L ${b.x0} ${b.y0} L ${b.x1 + 6} ${b.y0}"
+              fill="none" stroke="#5a504a" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="${PK_CURVE}" fill="none" stroke="${c}" stroke-width="3.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="${b.x1 + 6}" y="${b.y0 + 17}" font-family="IBM Plex Mono, monospace"
+              font-size="${TYPE_SVG.schematicAxis}" fill="#5a504a"
+              text-anchor="end" font-style="italic">k</text>
+        <text x="${b.x0 - 8}" y="${b.y1 - 4}" font-family="IBM Plex Mono, monospace"
+              font-size="${TYPE_SVG.schematicAxis}" fill="#5a504a"
+              text-anchor="start" font-style="italic">P(k)</text>
+      </g>` + arrow(388, 438, 75) + `
+      <g fill="${c}">
+        ${[54, 92, 38, 70, 26].map((h, i) =>
+          `<rect x="${452 + i * 32}" y="${122 - h}" width="20" height="${h}" rx="2"/>`).join("")}
+      </g>`) +
+      cap(68, s0) + cap(313, s1) + cap(526, s2) + `</svg>`;
+  }
+
+  if (kind === "cnn") {
+    /* field -> four conv blocks -> global average pool -> the 64-vector summary
+       -> the 64-32-2 regression head. The head is what the CNN was TRAINED on;
+       the summary handed to SBI is the vector, so the head is drawn faint and
+       the vector at full strength. */
+    const yc = 69;                                   // the field tile's centre
+
+    /* Four items in a 620-unit row, and the captions are wider than the things
+       they name ("conv blocks" is 112 units against a 21-unit vector), so the
+       spacing is set by the captions, not the drawing. The conv stack is pulled
+       left and the vector left of that, which spreads the four caption centres
+       to 68 / 272 / 421 / 551: gaps of 123, 42 and 43 units between the caption
+       boxes instead of 140, 48 and 19. The arrows absorb the difference, which
+       is why they are drawn at 0.8. */
+    const boxes = [[176, 52, 8], [238, 40, 12], [292, 28, 15], [332, 18, 18]];
+    const conv = boxes.map(([x, s, d]) => cuboid(x, yc, s, d, c)).join("");
+
+    const VX = 410, VW = 21, VN = 10, VH = 9, VG = 1.4;   // the 64-vector
+    const vTop = yc - (VN * VH + (VN - 1) * VG) / 2;
+    const vec = `<g fill="${c}">${Array.from({ length: VN }, (_, i) =>
+      `<rect x="${VX}" y="${(vTop + i * (VH + VG)).toFixed(1)}" width="${VW}"
+             height="${VH}" rx="1.5" opacity="${(0.55 + i * 0.045).toFixed(2)}"/>`).join("")}</g>`;
+
+    const HX = 508, OX = 566, HN = 4, ON = 2;            // 64 -> 32 -> 2
+    const col = (x, n, r) => Array.from({ length: n }, (_, i) =>
+      ({ x, y: yc + (i - (n - 1) / 2) * (n === ON ? 34 : 22), r }));
+    const hid = col(HX, HN, 6.5), out = col(OX, ON, 8);
+    const edge = (a, b) =>
+      `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${c}" stroke-width="1.4"/>`;
+    const node = (p) => `<circle cx="${p.x}" cy="${p.y}" r="${p.r}" fill="${c}"/>`;
+    const sub = (g, s) =>
+      `${g}<tspan font-size="${TYPE_SVG.schematicAxis * 0.8}" dy="4">${s}</tspan>`;
+
+    const headNet = `
+      <g opacity="0.5">
+        ${hid.map((h) => edge({ x: VX + VW, y: yc }, h)).join("")}
+        ${hid.map((h) => out.map((o) => edge(h, o)).join("")).join("")}
+        ${hid.map(node).join("")}${out.map(node).join("")}
+      </g>
+      ${out.map((o, i) =>
+        `<text x="${o.x + 15}" y="${o.y + 6}" font-family="IBM Plex Mono, monospace"
+               font-size="${TYPE_SVG.schematicAxis * 1.15}" fill="${c}" font-style="italic"
+               >${sub(i === 0 ? "\u03a9" : "\u03c3", i === 0 ? "m" : "8")}</text>`).join("")}`;
+
+    return open + native(
+      fieldTile(c, tile) + arrow(142, 170, 75, 0.8) + conv +
+      arrow(376, 404, 75, 0.8) + vec + headNet) +
+      cap(68, s0) + cap(272, s1) + cap(421, s2) + cap(551, s3) + `</svg>`;
+
+  }
+
+  /* Full field: the forward model itself. Two cubes of real simulation, the
+     initial conditions and the same box at z = 1, drawn by
+     figures/make_fl_cubes.py. Only two items, so they get the whole height --
+     192 units is 2.2in printed, against 1.5in for anything in a three-item row.
+
+     The images are SVG <image> rather than an <img> block so this stays one
+     SVG: that is what keeps the three columns' body text starting on the same
+     line. Two consequences worth knowing. build_artifact.py still inlines them,
+     because it rewrites image paths in poster_config.js and that is where the
+     paths live. render.py does NOT check their resolution, because it collects
+     images with querySelectorAll("img") -- make_fl_cubes.py prints the dpi
+     instead. */
+  const CUBE = { y: 8, w: 218, h: 192, ax: 282, bx: 338 };
+  const cube = (src, x) =>
+    `<image href="${src}" x="${x}" y="${CUBE.y}" width="${CUBE.w}" height="${CUBE.h}"
+            preserveAspectRatio="xMidYMid meet"/>`;
+  const mid = (CUBE.ax + CUBE.bx) / 2;
+
+  return open +
+    cube(cubes.ic, 22) + cap(131, s0) +
+    arrow(CUBE.ax, CUBE.bx, 104) +
+    (arrowLabel
+      /* Not mark()ed: it emits <span> for $...$ maths, which is not valid inside
+         an SVG <text>. Entities are fine here; maths is not. */
+      ? `<text x="${mid}" y="90" font-family="IBM Plex Mono, monospace"
+               font-size="${TYPE_SVG.schematicAxis}" fill="#5a504a"
+               text-anchor="middle">${arrowLabel}</text>`
+      : "") +
+    cube(cubes.z1, 380) + cap(489, s1) + `</svg>`;
+}
+
+/* The Full Field drawing this replaced: a 7x7 grid of squares for "every mode"
+   and a posterior ellipse. It said nothing about what field level inference
+   does, which the two cubes above do. Kept, not deleted -- the same convention
+   as POSTER.cost. To put it back, return this instead of the cubes and give the
+   fl approach three `stages` again.
+
+    const grid = [];
+    for (let i = 0; i < 7; i++)
+      for (let j = 0; j < 7; j++)
+        grid.push(`<rect x="${234 + j * 16}" y="${18 + i * 16}" width="13" height="13"
+                         fill="${c}" opacity="${0.25 + ((i * 7 + j) % 5) * 0.14}"/>`);
+    return open + fieldTile(c, tile) + cap(68, s0) + arrow(148, 210, 75) +
+      `<g>${grid.join("")}</g>` + cap(298, s1) + arrow(388, 440, 75) + `
+      <g fill="none" stroke="${c}" stroke-width="3">
+        <ellipse cx="530" cy="72" rx="68" ry="40" transform="rotate(-24 530 72)" opacity="0.45"/>
+        <ellipse cx="530" cy="72" rx="40" ry="22" transform="rotate(-24 530 72)"/>
+      </g>
+      <circle cx="530" cy="72" r="5" fill="${c}"/>` + cap(530, s2) + `</svg>`;
+*/
+
+/* --- Band 2: the approach columns ----------------------------------------
+   `head` is POSTER.summarization: the eyebrow and heading for this band's
+   rule. The columns themselves come from POSTER.approaches, and `tile` is
+   POSTER.fieldTile, the one field image two of the three drawings share. */
+function approachBand(list, head, tile) {
+  const band = el("section", "band");
+  band.appendChild(bandHead(head.eyebrow, head.heading));
+
+  const grid = el("div", "approaches");
+  grid.style.gridTemplateColumns = `repeat(${list.length}, 1fr)`;
+
+  list.forEach((a) => {
+    const col = el("article", "approach");
+    col.style.setProperty("--col-color", a.color);
+
+    const dr = el("div", "dim-row");
+    dr.appendChild(el("span", "dim", a.dim));
+    dr.appendChild(el("span", "dim-label", a.dimLabel));
+    col.appendChild(dr);
+
+    col.appendChild(el("h3", "approach-name", a.name));
+
+    if (a.schematic) {
+      const wrap = el("div");
+      wrap.innerHTML = schematic(a, tile);
+      col.appendChild(wrap);
+    }
+    col.appendChild(el("p", "body-text", a.body));
+    grid.appendChild(col);
+  });
+
+  band.appendChild(grid);
+  add(band);
+}
+
+/* --- Band 3: results -----------------------------------------------------
+   Three tracks: the sampling aside, the contour with its headline numbers, and
+   the discussion. The aside sits on the left because it is the how, read before
+   the what -- the results themselves start at the contour and run right.
+   ------------------------------------------------------------------------ */
+function resultsBand(r, samp) {
+  const band = el("section", "band");
+  band.appendChild(bandHead(r.eyebrow, r.heading));
+
+  const grid = el("div", "results-grid");
+
+  /* the shaded method column */
+  const aside = el("aside", "results-aside");
+  if (samp.eyebrow) aside.appendChild(el("div", "eyebrow", samp.eyebrow));
+  aside.appendChild(el("h3", "aside-head", samp.heading));
+  if (samp.lede) aside.appendChild(el("p", "lede", samp.lede));
+  samp.paras.forEach((t) => aside.appendChild(el("p", "body-text", t)));
+  if (samp.note) aside.appendChild(el("p", "note", samp.note));
+  grid.appendChild(aside);
+
+  /* figure and its headline numbers, composed as one unit */
+  const unit = el("div", "fig-unit");
+  unit.appendChild(figure(r.figure));
+  const stats = el("div", "stat-row");
+  r.stats.forEach((s) => {
+    const t = el("div", "stat");
+    t.style.setProperty("--sw", s.color);
+    t.innerHTML = `<span class="v">${mark(s.value)}</span>` +
+                  `<span class="l">${mark(s.label)}</span>`;
+    stats.appendChild(t);
+  });
+  unit.appendChild(stats);
+  unit.appendChild(el("div", "stats-caption", r.statsCaption));
+  grid.appendChild(unit);
+
+  /* The discussion. This replaced the numbers table: the same values read
+     better as three short paragraphs beside the contour than as a grid the
+     reader has to decode. `r.table` still holds them if it is wanted back. */
+  const mid = el("div", "results-mid");
+  const d = r.discussion;
+  mid.appendChild(el("p", "lede", d.lede));
+  const points = el("ul", "bullets");
+  d.bullets.forEach((t) => points.appendChild(el("li", "body-text", t)));
+  mid.appendChild(points);
+  mid.appendChild(el("p", "note", d.note));
+  grid.appendChild(mid);
+
+  /* The takeaway panel used to sit here as a third column. It was removed to
+     give its width to the contour, which is the headline of the poster. Its
+     text is still in poster_config.js under `takeaway` if you want it back --
+     re-append it here and restore the third track in .results-grid. */
+
+  band.appendChild(grid);
+  add(band);
+}
+
+/* --- Cost chart ----------------------------------------------------------
+   Horizontal grouped bars on a shared log axis, because the whole point is
+   that these costs differ by orders of magnitude. A null draws a dashed TBD
+   bar rather than silently plotting zero; an exact zero is labelled "none",
+   since a log axis cannot show it.
+   ------------------------------------------------------------------------ */
+function costChart(cost) {
+  const DEC = [-2, -1, 0, 1, 2, 3, 4, 5];
+  const TICK = cost.ticks;
+  const TBD = cost.tbdLabel, ZERO = cost.zeroLabel, UNIT = cost.unit;
+  const X0 = 268, X1 = 1052, W = 1100;
+  const x = (v) => X0 + ((Math.log10(v) + 2) / 7) * (X1 - X0);
+
+  const rowH = 74, barH = 27, top = 24;
+  const H = top + cost.series.length * rowH + 50;
+  const base = top + cost.series.length * rowH - 10;
+
+  let s = `<svg class="cost-chart" viewBox="0 0 ${W} ${H}" role="img"
+                aria-label="Setup and per-posterior cost in GPU-hours">`;
+
+  DEC.forEach((d, i) => {
+    s += `<line x1="${x(10 ** d)}" y1="${top - 10}" x2="${x(10 ** d)}" y2="${base}"
+                stroke="#e3d8d4" stroke-width="1.5"/>
+          <text x="${x(10 ** d)}" y="${base + 30}" font-family="IBM Plex Mono, monospace"
+                font-size="${TYPE_SVG.costTick}" fill="#5a504a" text-anchor="middle">${TICK[i]}</text>`;
+  });
+  s += `<text x="${(X0 + X1) / 2}" y="${H - 8}" font-family="IBM Plex Sans, sans-serif"
+              font-size="${TYPE_SVG.costAxis}" fill="#5a504a" text-anchor="middle">${cost.axisLabel}</text>`;
+
+  cost.series.forEach((ser, i) => {
+    const y = top + i * rowH;
+    /* Centre the label on the *pair* of bars, not on the first one: the two bars
+       are one analysis, and hanging the name off the top bar made the rows read
+       as six independent entries instead of three. 0.35em is the optical centre
+       of the cap height for this face. */
+    const pairMid = y + 4 + barH + 3.5;
+    s += `<text x="${X0 - 16}" y="${pairMid + 7}" font-family="IBM Plex Sans, sans-serif"
+                font-size="${TYPE_SVG.costRowLabel}" font-weight="600" fill="#17130f" text-anchor="end">${ser.label}</text>`;
+
+    [[ser.setup, true], [ser.posterior, false]].forEach(([val, solid], k) => {
+      const by = y + 4 + k * (barH + 7);
+      if (val == null) {
+        s += `<rect x="${X0}" y="${by}" width="90" height="${barH}" fill="none"
+                    stroke="${ser.color}" stroke-width="2.5" stroke-dasharray="8 6"/>
+              <text x="${X0 + 104}" y="${by + barH - 8}" font-family="IBM Plex Mono, monospace"
+                    font-size="${TYPE_SVG.costValue}" fill="#9c4040">${TBD}</text>`;
+      } else if (val <= 0) {
+        s += `<text x="${X0 + 4}" y="${by + barH - 8}" font-family="IBM Plex Mono, monospace"
+                    font-size="${TYPE_SVG.costValue}" fill="#5a504a">${ZERO}</text>`;
+      } else {
+        const w = Math.max(x(val) - X0, 3);
+        s += `<rect x="${X0}" y="${by}" width="${w}" height="${barH}"
+                    fill="${solid ? ser.color : "none"}"
+                    stroke="${ser.color}" stroke-width="${solid ? 0 : 3}"/>
+              <text x="${X0 + w + 11}" y="${by + barH - 8}" font-family="IBM Plex Mono, monospace"
+                    font-size="${TYPE_SVG.costValue}" fill="#17130f">${val} ${UNIT}</text>`;
+      }
+    });
+  });
+
+  return s + "</svg>";
+}
+
+function costBand(cost) {
+  const band = el("section", "band");
+  band.appendChild(bandHead(cost.eyebrow, cost.heading));
+
+  const grid = el("div", "cost-grid");
+  const left = el("div");
+  left.appendChild(el("p", "body-text", cost.intro));
+  const leg = el("div", "cost-legend");
+  leg.innerHTML = cost.legend.map((l) =>
+    `<span><i class="${l.key === "setup" ? "key-solid" : "key-hollow"}"></i>${mark(l.label)}</span>`
+  ).join("");
+  left.appendChild(leg);
+  left.appendChild(el("p", "note", cost.note));
+  grid.appendChild(left);
+
+  const right = el("div");
+  right.innerHTML = costChart(cost);
+  grid.appendChild(right);
+
+  band.appendChild(grid);
+  add(band);
+}
+
+/* --- Footer -------------------------------------------------------------- */
+function footer(f, refs, colophon) {
+  const grid = el("div", "footer-grid");
+
+  const left = el("div");
+  left.appendChild(bandHead(f.eyebrow, f.heading));
+  const ul = el("ul", "future-list");
+  ul.style.marginTop = "0.14in";
+  f.items.forEach((t) => ul.appendChild(el("li", null, t)));
+  left.appendChild(ul);
+  grid.appendChild(left);
+
+  const right = el("div", "refs");
+  right.appendChild(el("div", "eyebrow", "References"));
+  const ol = el("ol");
+  refs.forEach((t) => ol.appendChild(el("li", null, t)));
+  right.appendChild(ol);
+  grid.appendChild(right);
+
+  add(grid);
+
+  const col = el("div", "colophon");
+  col.innerHTML = `<span>${mark(colophon)}</span>` +
+                  `<span>${mark(POSTER.meta.venue)}</span>`;
+  add(col);
+}
+
+/* --- Build --------------------------------------------------------------- */
+header(POSTER.meta);
+questionBand(POSTER.question);
+factStrip(POSTER.setup);
+approachBand(POSTER.approaches, POSTER.summarization, POSTER.fieldTile);
+resultsBand(POSTER.results, POSTER.sampling);
+/* The cost band is off. The comparison it drew -- setup versus per-posterior
+   GPU-hours at this box size -- is not the cost question that matters: what
+   matters is that field level is infeasible at DESI volume, and a chart of
+   hours on a 320 Mpc/h mock does not show that. `costBand` and `costChart`
+   below, and POSTER.cost, are unchanged; put this line back to draw it again.
+     costBand(POSTER.cost);   */
+footer(POSTER.future, POSTER.references, POSTER.meta.footer);
+
+/* --- Screen preview scaling ---------------------------------------------- */
+function fit() {
+  const IN = 96;
+  const s = Math.min(1, (window.innerWidth - 64) / (24 * IN));
+  document.documentElement.style.setProperty("--preview-scale", s);
+  document.documentElement.style.setProperty("--preview-h", 36 * IN * s + "px");
+}
+fit();
+window.addEventListener("resize", fit);
+
+/* --- Overflow guard -------------------------------------------------------
+   The sheet is a fixed 36 in and clips anything past it, which in print is a
+   silently chopped-off footer. This says so on screen instead, and never
+   prints. If it fires: lower --t-body, tighten --fig-contour, or cut copy.
+   ------------------------------------------------------------------------ */
+function checkOverflow() {
+  const over = sheet.scrollHeight - sheet.clientHeight;
+  const old = document.getElementById("overflow-warn");
+  if (old) old.remove();
+  if (over <= 1) return;
+  const w = document.createElement("div");
+  w.id = "overflow-warn";
+  w.textContent =
+    `Content overflows the 36 in sheet by ${(over / 96).toFixed(2)} in and will be ` +
+    `clipped in print. Lower --t-body or --fig-contour in poster_style.css, or cut copy.`;
+  Object.assign(w.style, {
+    position: "fixed", left: "0", right: "0", top: "0", zIndex: "99",
+    background: "#800000", color: "#fff", padding: "10px 16px",
+    font: "600 14px/1.4 system-ui, sans-serif",
+  });
+  document.body.appendChild(w);
+}
+window.addEventListener("load", checkOverflow);
+window.addEventListener("resize", checkOverflow);
+
+/* A `type` key that matches nothing would silently do nothing, which reads as
+   "the config is ignoring me". Say so instead. Screen only, like the banner. */
+if (UNKNOWN_TYPE_KEYS.length) {
+  const w = document.createElement("div");
+  w.id = "type-warn";
+  w.textContent =
+    `POSTER.type has no such size: ${UNKNOWN_TYPE_KEYS.join(", ")}. ` +
+    `See TYPE_VARS in poster.html for the names that work.`;
+  Object.assign(w.style, {
+    position: "fixed", left: "0", right: "0", bottom: "0", zIndex: "99",
+    background: "#800000", color: "#fff", padding: "10px 16px",
+    font: "600 14px/1.4 system-ui, sans-serif",
+  });
+  window.addEventListener("load", () => document.body.appendChild(w));
+}
+</script>
+</body>
+</html>

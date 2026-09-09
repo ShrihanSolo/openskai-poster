@@ -1,0 +1,671 @@
+/* ===========================================================================
+   Poster styling — 24in x 36in portrait, print-first.
+
+   Content lives in poster_config.js; you should rarely need this file. The two
+   things worth touching are marked TUNE: the type scale, and the figure height
+   caps.
+
+   THE ONE RULE THAT MATTERS: the sheet is a fixed 36 in and clips whatever
+   runs past it. Figures are therefore sized by MAX-HEIGHT, never by width —
+   a square figure in a wide column will otherwise eat ten inches of the page.
+   Sizing by height is what keeps the vertical budget honest.
+
+   Vertical budget, adding to ~34.7 in with ~1.3 in of slack:
+     margins 1.7 · header 4.4 · question 6.0 · facts 0.9 · approaches 7.0
+     results 8.4 · cost 3.8 · footer 2.4 · gaps 1.7 · colophon 0.4
+   =========================================================================== */
+
+@page { size: 24in 36in; margin: 0; }
+
+:root {
+  /* Palette. Maroon matches the University of Chicago seal; the three accents
+     are the colors compare_contours.ipynb draws its contours in, so every
+     column on the poster is the color of its own contour. */
+  --maroon:     #800000;
+  --maroon-mid: #9c4040;
+  --ink:        #17130f;   /* warm near-black, deliberately not #000 */
+  --ink-soft:   #5a504a;
+  --paper:      #ffffff;
+  --wash:       #f7f2f0;   /* warm off-white, biased toward the maroon */
+  --edge:       #e3d8d4;
+  --flag:       #ffe066;   /* unfinished-content highlight */
+
+  /* TUNE — type scale, all points. Sized to read at about four feet.
+     These are DEFAULTS. `POSTER.type` in poster_config.js overwrites any of
+     them at load, so the config is the place to change a size; the value here
+     is what you get if the config omits it. Every visible size on the poster
+     is in this block -- if you find yourself writing a font-size inside a
+     component rule below, add a variable here instead, or the config can't
+     reach it. The names map to `type` keys via TYPE_VARS in poster.html. */
+  --t-title:      58pt;   /* one line: fits the sheet width -- see .title */
+  --t-subtitle:   24.5pt; /* must stay one line -- see .subtitle */
+  --t-author:     24pt;
+  --t-affil:      18pt;
+  --t-eyebrow:    19pt;
+  --t-band:       35pt;
+  --t-lede:       28pt;
+  --t-body:       25pt;
+  --t-callout:    27pt;
+  --t-caption:    20pt;
+  --t-figtag:     21pt;   /* the corner stamp on a figure, e.g. "Preliminary" */
+  --t-small:      19pt;
+
+  --t-fact-label: 26pt;
+  --t-fact-key:   16pt;
+  --t-fact-value: 23pt;
+
+  --t-dim:        56pt;
+  --t-dim-label:  20pt;
+  --t-col:        31pt;
+  --t-colbody:    23pt;
+
+  --t-aside-head: 27pt;
+  --t-aside:      19pt;
+  --t-mid-lede:   28pt;
+  --t-mid-body:   24pt;
+  --t-stat:       48pt;
+  --t-stat-label: 15pt;
+
+  --t-legend:     20pt;
+  --t-future:     20pt;
+  --t-ref:        17pt;
+  --t-colophon:   15pt;
+  --t-qr:         9.4pt;  /* the caption under a QR code, if one is set */
+  --t-table:      25pt;   /* the numbers table, not currently rendered */
+
+  /* TUNE — figure height caps, inches. These govern the whole layout. */
+  --fig-question: 6.22in;   /* exactly what the column width allows, so the width
+                               below is what actually sizes this figure: the panels
+                               are 1.655:1, and 10.3in / 1.655 = 6.22in. Both numbers
+                               come from figures/make_density_fields.py -- change one
+                               there and both of these follow. */
+  --fig-contour:  7.00in;   /* TUNE: the contour is the headline of the poster and
+                               is sized to the space the sheet has, not to the
+                               aside beside it. The middle track of .results-grid
+                               is this times 1051/924 -- move the two together. */
+
+  /* TUNE — the figure track in band 1. The density panels are 1.875:1, so this
+     width, not --fig-question, is what sets their size. Past about 9.5in the
+     prose beside it takes extra lines and the band grows -- which is now the
+     point: the sheet had ~4.8in spare at the foot and the figures are what it
+     is being spent on. The ceiling is the prose, not the sheet: much past
+     10.5in the left column is too narrow to justify without rivers. */
+  --col-question-fig: 10.3in;
+
+  /* Layout */
+  --margin: 0.85in;
+  --gutter: 0.5in;
+  --band-gap: 0.48in;   /* between the header, the four bands and the footer.
+                           Cheap vertical space: five gaps, so 0.1in here is
+                           0.5in of sheet. */
+}
+
+* { box-sizing: border-box; }
+
+html, body { background: #4c4744; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sheet {
+  width: 24in;
+  height: 36in;
+  background: var(--paper);
+  padding: var(--margin);
+  display: flex;
+  flex-direction: column;
+  gap: var(--band-gap);
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+@media screen {
+  .sheet { transform: scale(var(--preview-scale, 1)); box-shadow: 0 0.1in 0.7in rgba(0,0,0,.5); }
+  .stage { height: var(--preview-h, 36in); padding: 22px; box-sizing: content-box; }
+}
+
+@media print {
+  html, body { background: var(--paper); }
+  .stage { padding: 0; height: auto; }
+  .sheet { transform: none; box-shadow: none; }
+  #overflow-warn, #type-warn { display: none !important; }
+}
+
+/* --- Shared type -------------------------------------------------------- */
+p { margin: 0; }
+
+.body-text {
+  font-size: var(--t-body);
+  line-height: 1.34;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.body-text + .body-text { margin-top: 0.15in; }
+.body-text b { font-weight: 600; }
+
+.lede {
+  font-size: var(--t-lede);
+  line-height: 1.24;
+  font-weight: 400;
+  color: var(--maroon);
+  text-wrap: pretty;
+  margin-bottom: 0.16in;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Unfinished content lights up so it can't be printed by mistake. */
+/* --- Inline maths -------------------------------------------------------
+   $...$ in the config becomes these spans; mathHTML() in poster.html does the
+   parsing. Every size here is relative, so maths follows whatever type size
+   the block around it is set to and nothing needs retuning per band.
+
+   TUNE: --math-family. It inherits the body face by default, which keeps the
+   poster in one voice. Set it to a serif (Georgia, "IBM Plex Serif") for the
+   Computer Modern look instead.
+   ------------------------------------------------------------------------ */
+.math { font-family: var(--math-family, inherit); white-space: nowrap; }
+
+.math .mvar  { font-style: italic; }         /* variables, lowercase Greek */
+.math .mop   { margin-right: 0.16em; }       /* log, max: upright, then a gap */
+.math .mtext { font-style: normal; }         /* \text{...} */
+
+/* TeX's spacing, in the same proportions: thin 3/18 em, medium 4/18,
+   thick 5/18. Written as margins so no space can break a line. */
+.math .mbin   { margin: 0 0.22em; }
+.math .mrel   { margin: 0 0.28em; }
+.math .mpunct { margin-right: 0.17em; }
+.math .mthin  { margin-right: 0.17em; }
+.math .mmed   { margin-right: 0.22em; }
+.math .mthick { margin-right: 0.28em; }
+
+/* Positioned, not vertical-aligned: a subscript must not open up the line it
+   sits on. The default `vertical-align: sub` grows the line box, and on a
+   fixed 36in sheet a hundredth of an inch a line is a paragraph. */
+.math sub, .math sup {
+  font-size: 0.7em; line-height: 0; position: relative; vertical-align: baseline;
+}
+.math sub { top:  0.22em; }
+.math sup { top: -0.42em; }
+
+.todo {
+  background: var(--flag);
+  box-shadow: 0 0 0 0.035in var(--flag);
+  font-weight: 600;
+}
+
+/* --- Band heads ---------------------------------------------------------
+   Eyebrow above, condensed head, and a hairline that runs out to the right
+   margin. The hairline is what makes a band read as a band.
+   ------------------------------------------------------------------------ */
+.band { display: flex; flex-direction: column; gap: 0.26in; }
+
+.band-head { display: flex; align-items: baseline; gap: 0.3in; }
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-eyebrow);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--maroon-mid);
+}
+
+.band-head h2 {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-band);
+  font-weight: 700;
+  color: var(--maroon);
+  margin: 0;
+  line-height: 1.02;
+  white-space: nowrap;
+}
+
+.band-head .hair {
+  flex: 1;
+  height: 0.022in;
+  background: var(--maroon);
+  opacity: 0.45;
+  transform: translateY(-0.09in);
+}
+
+.band-head .eyebrow { white-space: nowrap; }
+
+/* --- Header -------------------------------------------------------------
+   Two rows, not two columns. The title has the whole 22.3 in of the text block
+   to itself, so its size is set by the sheet rather than by whatever width the
+   logos leave over; the byline and the logos share the row underneath. */
+.header { display: flex; flex-direction: column; }
+.header-row { display: grid; grid-template-columns: 1fr auto; gap: var(--gutter); align-items: end; }
+
+.title {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-title);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  color: var(--maroon);
+  margin: 0 0 0.1in;
+  /* One line. text-wrap:balance used to break this mid-term ("full field" /
+     "level inference"); --t-title is sized so the whole question fits the width
+     of the sheet. render.py fails the build if it ever overruns. */
+  white-space: nowrap;
+}
+
+/* Keep this to one line. It sets the height of the header's left column, and a
+   second line pushes every band below it down by ~0.37 in -- which the sheet no
+   longer has spare. The column is only as wide as the logos leave it, so
+   enlarging a logo can wrap this even when nothing about the text changed. */
+.subtitle {
+  font-size: var(--t-subtitle);
+  line-height: 1.18;
+  color: var(--ink-soft);
+  /* The gap under this is what separates the paper's framing from the byline,
+     so it is set wider than the leading of either. It also sets where the
+     header's left column ends, and the logos are bottom-aligned to that. */
+  margin: 0 0 0.42in;
+  max-width: 15.5in;
+}
+
+.authors { font-size: var(--t-author); font-weight: 600; line-height: 1.24; margin: 0 0 0.07in; }
+.authors sup { font-size: 0.56em; font-weight: 500; }
+
+.affils { font-size: var(--t-affil); line-height: 1.3; color: var(--ink-soft); }
+.affils div { display: flex; gap: 0.06in; }
+.affils sup { font-size: 0.72em; }
+
+.venue {
+  display: inline-block;
+  margin-top: 0.12in;
+  padding: 0.06in 0.18in;
+  background: var(--maroon);
+  color: #fff;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-small);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.logos { display: flex; align-items: flex-end; gap: 0.4in; }
+.logos img { display: block; width: auto; }
+
+.qr { text-align: center; }
+.qr img { width: 1.5in; height: 1.5in; display: block; }
+.qr span { font-size: var(--t-qr); color: var(--ink-soft); display: block; margin-top: 0.04in; }
+
+/* --- Figures ------------------------------------------------------------
+   No frame: a matplotlib panel on white paper reads better unboxed, and a
+   border makes it look pasted on. Sized by height so it cannot dominate.
+   ------------------------------------------------------------------------ */
+figure { margin: 0; display: flex; flex-direction: column; gap: 0.11in; }
+
+figure img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  max-height: var(--fig-max, 5in);
+  width: auto;
+  height: auto;
+}
+
+/* A stamp in a figure's corner. Boxed and on the paper colour so it reads as a
+   label ON the plot rather than as one of the plot's own annotations, which is
+   what a bare word in a white corner would look like. */
+figure { position: relative; }
+
+.fig-tag {
+  position: absolute;
+  /* Insets are from the FIGURE's corner, and the contour SVG carries a little
+     white of its own -- more on the right than the top. These land the stamp
+     about 0.18in inside the axes on both sides. */
+  top: 0.14in;
+  right: 0.26in;
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-figtag);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--maroon);
+  background: var(--paper);
+  border: 0.022in solid var(--maroon);
+  padding: 0.05in 0.13in 0.06in;
+  line-height: 1;
+}
+
+figcaption {
+  font-size: var(--t-caption);
+  max-width: 100%;
+  line-height: 1.28;
+  color: var(--ink-soft);
+  border-top: 0.008in solid var(--edge);
+  padding-top: 0.09in;
+}
+
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* --- Band 1: the question ----------------------------------------------- */
+.question-grid { display: grid; grid-template-columns: 1fr var(--col-question-fig); gap: var(--gutter); align-items: start; }
+.question-grid > figure { --fig-max: var(--fig-question); }
+
+/* The motivation prose is a run of short, separate questions, not one argument,
+   so it is set with a paragraph gap wide enough to read them as separate. It
+   can afford to be: this column is shorter than the figure beside it, and the
+   band's height is the figure's -- as of this spacing it is the taller of the
+   two by ~0.3in, so widening it further grows the band and the whole sheet
+   below it. Watch render.py's overflow number. */
+.question-grid .body-text + .body-text { margin-top: 0.30in; }
+.question-grid .lede { margin-bottom: 0.26in; }
+
+.callout {
+  border: 0.028in solid var(--maroon);
+  border-left-width: 0.12in;
+  padding: 0.17in 0.28in;
+  margin-top: 0.30in;
+  font-size: var(--t-callout);
+  line-height: 1.24;
+  color: var(--maroon);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+/* --- Fact strip ---------------------------------------------------------
+   One row, no card. Label at the left, then the numbers that define the mock.
+   ------------------------------------------------------------------------ */
+.factstrip {
+  display: flex;
+  align-items: stretch;
+  gap: 0.42in;
+  background: var(--wash);
+  padding: 0.17in 0.3in;
+}
+
+.factstrip > .fs-label {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-fact-label);
+  font-weight: 700;
+  color: var(--maroon);
+  align-self: center;
+  max-width: 3.1in;
+  line-height: 1.08;
+}
+
+.facts { display: flex; gap: 0.42in; flex: 1; justify-content: space-between; }
+
+.fact { display: flex; flex-direction: column; gap: 0.02in; }
+
+.fact dt {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-fact-key);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--maroon-mid);
+}
+
+.fact dd { margin: 0; font-size: var(--t-fact-value); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* --- Band 2: the approach columns --------------------------------------- */
+.approaches { display: grid; gap: var(--gutter); align-items: stretch; }
+
+.approach {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12in;
+  padding-top: 0.14in;
+  border-top: 0.07in solid var(--col-color, var(--maroon));
+}
+
+/* The big number is the point of this band: the size of the summary each
+   analysis hands to the inference. */
+.dim-row { display: flex; align-items: baseline; gap: 0.16in; }
+
+.dim {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-dim);
+  font-weight: 700;
+  line-height: 0.9;
+  color: var(--col-color, var(--maroon));
+  font-variant-numeric: tabular-nums;
+}
+
+.dim-label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-dim-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.approach-name {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-col);
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.04;
+  margin: 0;
+}
+
+.approach svg { width: 100%; height: auto; display: block; }
+.approach .body-text { font-size: var(--t-colbody); }
+
+/* --- Band 3: results -----------------------------------------------------
+   Three tracks: the figure with its headline numbers beneath it, the table,
+   and the takeaway. The figure and the percentages are one composed unit --
+   the numbers are what the contour means.
+   ------------------------------------------------------------------------ */
+/* Three tracks: the method aside, the contour, then the discussion.
+   The contour source is 1051x924, so at the 7.05in height cap it is 8.02in wide
+   -- the figure track is set to that and not a hair more, and the inches the
+   figure was never using pay for the aside. The discussion takes the rest. */
+/* TUNE: the middle track is the contour's own width. The aspect is 1051x924,
+   so at the 7.00in height cap it is 7.96in wide; the track is that and not a
+   hair more, so `.fig-tag` lands on the contour's corner and not in a gap. */
+.results-grid { display: grid; grid-template-columns: 5.0in 7.96in 1fr; gap: var(--gutter); align-items: stretch; }
+
+/* The method aside. Shaded rather than ruled: it is the one block in this band
+   that is not a result, and the wash says so without another heading level.
+   Its text is justified to a narrow measure, so it is set smaller than the
+   discussion beside it -- --t-aside is the knob if it overruns. */
+.results-aside {
+  background: var(--wash);
+  padding: 0.3in 0.34in 0.32in;
+  display: flex;
+  flex-direction: column;
+  /* The contour beside this runs taller than the column does, so left at the
+     top the text sat against the ceiling of a tall block of wash. Centred, the
+     wash reads as a panel around it. Note that `.note`'s margin-top:auto below
+     would override this and push the text back up -- that note is unset today,
+     but if you set one, drop the auto margin too. */
+  justify-content: center;
+}
+
+.results-aside .aside-head {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-aside-head);
+  font-weight: 700;
+  color: var(--maroon);
+  line-height: 1.06;
+  margin: 0.08in 0 0.14in;
+}
+
+/* Ragged right, unlike the rest of the poster: at ~31 characters a line this
+   measure is too narrow to justify without opening rivers between words. */
+.results-aside .body-text { font-size: var(--t-aside); line-height: 1.32;
+                            text-align: left; }
+.results-aside .body-text + .body-text { margin-top: 0.18in; }
+.results-aside .note { margin-top: auto; padding-top: 0.24in; }
+
+/* The figure column is the tall one, so with align-items:start the table and
+   the takeaway used to stop less than halfway down and leave the band's whole
+   lower right empty. Stretching them and pushing the footnote to the floor
+   spends that space instead of padding it. */
+/* The discussion column. The note is pushed to the floor so the column reads
+   as a full block of text rather than stopping short beside a tall figure. */
+.results-mid { display: flex; flex-direction: column; }
+/* Set larger than the rest of the poster on purpose. This column is the payoff
+   and is meant to be read from further back than the method columns, and at
+   this measure it also fills the height the contour sets beside it. Both sizes
+   are TUNE knobs: if the band overruns, bring them down together. */
+.results-mid .lede { font-size: var(--t-mid-lede); margin-bottom: 0.22in; }
+.results-mid .body-text { font-size: var(--t-mid-body); }
+.results-mid .body-text + .body-text { margin-top: 0.22in; }
+.results-mid .note { margin-top: auto; padding-top: 0.26in; }
+
+/* The discussion is a list, not prose: five separate claims, read standing up.
+   Same maroon dash as the outlook list in the footer, so the poster has one
+   bullet rather than two. The marker is drawn rather than a list-style, which
+   puts it where the cap-height is instead of on the baseline. */
+.bullets { list-style: none; margin: 0; padding: 0; }
+.bullets li { padding-left: 0.42in; position: relative; }
+.bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.16in;
+  width: 0.22in; height: 0.05in;
+  background: var(--maroon);
+}
+.bullets b { color: var(--maroon); }
+
+/* An analysis's number, in the colour of its own contour in the plot beside it.
+   These mirror the `color` fields on POSTER.approaches / POSTER.results.stats;
+   change them together. */
+.c-pk  { color: #3b6fd6; font-weight: 600; }
+.c-cnn { color: #c8541a; font-weight: 600; }
+.c-fl  { color: #0f9b8e; font-weight: 600; }
+
+.fig-unit { display: flex; flex-direction: column; gap: 0.16in; }
+.fig-unit > figure { --fig-max: var(--fig-contour); }
+
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.16in; }
+
+.stat { text-align: center; border-top: 0.05in solid var(--sw); padding-top: 0.08in; }
+
+.stat .v {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: var(--t-stat);
+  font-weight: 700;
+  line-height: 0.94;
+  color: var(--sw);
+  font-variant-numeric: tabular-nums;
+  display: block;
+}
+
+.stat .l {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-stat-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  display: block;
+  margin-top: 0.03in;
+}
+
+.stats-caption {
+  text-align: center;
+  font-size: var(--t-caption);
+  color: var(--ink-soft);
+  margin-top: -0.02in;
+}
+
+table.fom { width: 100%; border-collapse: collapse; font-size: var(--t-table); font-variant-numeric: tabular-nums; }
+
+table.fom th {
+  text-align: left;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68em;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--maroon-mid);
+  padding: 0 0.12in 0.09in 0;
+  border-bottom: 0.02in solid var(--maroon);
+  vertical-align: bottom;
+}
+
+table.fom td { padding: 0.17in 0.12in 0.19in 0; border-bottom: 0.008in solid var(--edge); }
+table.fom tr:last-child td { border-bottom: 0; }
+table.fom th:not(:first-child), table.fom td:not(:first-child) { text-align: right; }
+
+.row-label { display: flex; align-items: center; gap: 0.12in; font-weight: 600; }
+.swatch { width: 0.22in; height: 0.22in; flex: none; background: var(--sw, var(--maroon)); }
+
+.note { font-size: var(--t-small); line-height: 1.28; color: var(--ink-soft); margin-top: 0.12in; }
+
+/* Takeaway — the single sentence a passer-by should leave with, and the only
+   filled panel on the poster. It was a cloud, but a scalloped outline has no
+   rectangular safe area: the heading crossed the top arc and the first line ran
+   out through the right edge. A box holds the same emphasis and clips nothing. */
+.takeaway {
+  background: var(--maroon);
+  color: var(--paper);
+  padding: 0.5in 0.55in;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.16in;
+}
+
+.takeaway h4 {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", Arial, sans-serif;
+  font-size: 24pt;
+  font-weight: 700;
+  color: var(--paper);
+  opacity: 0.72;
+  margin: 0;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.takeaway p { font-size: 27pt; line-height: 1.3; text-wrap: pretty; }
+
+/* Bold inside the takeaway is the figure being quoted; on maroon it reads by
+   weight alone, so it must not also try to be a colour. */
+.takeaway b { color: var(--paper); font-weight: 700; }
+
+/* --- Band 4: cost ------------------------------------------------------- */
+.cost-grid { display: grid; grid-template-columns: 1fr 11in; gap: var(--gutter); align-items: start; }
+.cost-chart { width: 100%; height: auto; display: block; }
+
+.cost-legend { display: flex; gap: 0.4in; flex-wrap: wrap; font-size: var(--t-legend); color: var(--ink-soft); margin-top: 0.14in; }
+.cost-legend span { display: flex; align-items: center; gap: 0.1in; }
+.key-solid, .key-hollow { width: 0.28in; height: 0.17in; flex: none; background: var(--ink-soft); }
+.key-hollow { background: transparent; border: 0.02in solid var(--ink-soft); }
+
+/* --- Footer ------------------------------------------------------------- */
+.footer-grid { display: grid; grid-template-columns: 1fr 8.4in; gap: var(--gutter); align-items: start; }
+
+.future-list { display: flex; flex-direction: column; gap: 0.09in; font-size: var(--t-future); line-height: 1.3; margin: 0; padding: 0; list-style: none; }
+.future-list li { padding-left: 0.34in; position: relative; }
+.future-list li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.13in;
+  width: 0.18in; height: 0.05in;
+  background: var(--maroon);
+}
+.future-list b { color: var(--maroon); font-weight: 600; }
+
+.refs { font-size: var(--t-ref); line-height: 1.3; color: var(--ink-soft); }
+.refs ol { margin: 0.08in 0 0; padding-left: 0.28in; }
+.refs li { margin-bottom: 0.05in; }
+
+.colophon {
+  font-size: var(--t-colophon);
+  color: var(--ink-soft);
+  border-top: 0.008in solid var(--edge);
+  padding-top: 0.09in;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gutter);
+}
+
+:focus-visible { outline: 0.03in solid var(--maroon); outline-offset: 0.03in; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
