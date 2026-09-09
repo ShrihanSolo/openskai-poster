@@ -268,8 +268,8 @@ const POSTER = {
 
     // The headline. These are the FoM ratios, repeated big under the figure.
     stats: [
-      { value: "17%", label: "power spectrum", color: "#3b6fd6" },
-      { value: "35%", label: "learned summary", color: "#c8541a" },
+      { value: "9%", label: "power spectrum", color: "#3b6fd6" },
+      { value: "18%", label: "learned summary", color: "#c8541a" },
       { value: "100%", label: "field level", color: "#0f9b8e" },
     ],
     statsCaption: "of the field-level figure of merit",
@@ -302,7 +302,7 @@ const POSTER = {
 
       note:
         "$\\text{FoM} = 1/\\sqrt{\\det C}$, inversely proportional to the 1-sig ellipse " +
-        "area. Summaries limited to using scales $k < 0.8$ Mpc/h.",
+        "area. Summaries limited to using scales $k < 0.8$ Mpc/h. Galaxy bias fixed.",
     },
 
     /* NOT CURRENTLY RENDERED. Replaced by `discussion` above, which says the
@@ -327,16 +327,16 @@ const POSTER = {
         },
         {
           label: "Field level",
-          om: "0.3007 ± 0.0103",
-          s8: "0.8189 ± 0.0059",
-          fom: "18,815",
+          om: "0.2983 ± 0.0084",
+          s8: "0.8180 ± 0.0035",
+          fom: "36,159",
           color: "#0f9b8e",
         },
       ],
       note:
         "$\\text{FoM} = 1/\\sqrt{\\det C}$, inversely proportional to the 68% ellipse " +
         "area. ± are marginal standard deviations. Truth: $Ω_m$ 0.3111, " +
-        "$σ_8$ 0.8102. Field level: 6 of 8 chains, 5,760 samples.",
+        "$σ_8$ 0.8102. Field level: all 8 chains.",
     },
 
     /* NOT CURRENTLY RENDERED. This was a panel in a third column; its width
@@ -345,9 +345,9 @@ const POSTER = {
     takeaway: {
       heading: "Takeaway",
       body:
-        "$P(k)$ recovers <b>17%</b> of the field-level figure of merit. A " +
-        "learned 64-number summary doubles that to <b>35%</b> — and still " +
-        "leaves a <b>factor of three</b> on the table.",
+        "$P(k)$ recovers <b>9%</b> of the field-level figure of merit. A " +
+        "learned 64-number summary doubles that to <b>18%</b> — and still " +
+        "leaves a <b>factor of five</b> on the table.",
     },
   },
 
@@ -484,7 +484,7 @@ const POSTER = {
     asideBody: 20,
     discussionLede: 28, // "The three posteriors nest..."
     discussionBody: 23,
-    statValue: 48, // 17% / 35% / 100%
+    statValue: 48, // 9% / 18% / 100%
     statLabel: 15, // POWER SPECTRUM, LEARNED SUMMARY, FIELD LEVEL
 
     /* cost band and footer */

@@ -430,9 +430,16 @@ Source `main`, folder `/ (root)`.
 ## Provenance
 
 Numbers on the poster come from `compare/figures/fom_summary.csv`, written by
-`compare_contours.ipynb` at commit `8bbc622`, with the field-level posterior
-built from 6 of 8 MCLMC chains (`FL_CHAINS = [0, 1, 2, 4, 5, 7]`) and all three
-posteriors conditioned on the same `_obsfl` mock observation.
+`compare_contours.ipynb` at commit `175934f`, with the field-level posterior
+built from **all** the MCLMC chains of the `..._r50_..._vHfix` run (the earlier
+figures used 6 of 8 chains of a shorter `_vH2` run) and all three posteriors
+conditioned on the same `_obsfl` mock observation.
+
+That rerun roughly doubled the field-level FoM, 18,815 to 36,159, while the two
+summaries are unchanged — so the ratios on the poster moved 17% to **9%** and
+35% to **18%**. The CNN still doubles the power spectrum, which is what the
+discussion bullet claims; the gap to field level is now a factor of five rather
+than three.
 
 `Neurips.jpeg` is the previous poster, kept as the style reference. It is not
 used in the output.
