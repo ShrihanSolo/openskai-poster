@@ -85,9 +85,14 @@ const POSTER = {
       { src: "skailogo.png", alt: "SkAI Institute", height: 1.45 },
     ],
 
-    // Point `src` at a QR image in poster/ to show one, or leave null.
-    // TODO: decide what the QR should link to (repo? paper? your site?).
-    qr: null,
+    // Drawn at the LEFT end of the logo row, before the UChicago seal. `height`
+    // is in inches and the image is assumed square; 1.35 matches the seal
+    // beside it. Set `src` to null to drop it, or give it a `caption` string to
+    // label it. Remember to add the file to SITE_FILES in publish_site.py --
+    // that script refuses to run if the config points at something it would not
+    // publish, so a forgotten asset fails loudly rather than 404ing live.
+    // TODO: confirm what the QR links to (repo? paper? your site?).
+    qr: { src: "qr.png", caption: null, height: 1.35 },
 
     footer:
       "SkAI is funded by the U.S. National Science Foundation and the " +
@@ -448,7 +453,7 @@ const POSTER = {
   type: {
     /* header */
     title: 63,
-    subtitle: 24.5,
+    subtitle: 21.5,
     author: 28,
     affil: 15,
     qrCaption: 9.4, // the caption under a QR code, if you set one

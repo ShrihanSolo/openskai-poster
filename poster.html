@@ -337,11 +337,17 @@ function header(m) {
     img.style.height = l.height + "in";
     logos.appendChild(img);
   });
+  /* prepend, not append: the QR reads as an aside to the logos, so it sits on
+     the outside of the row rather than between them and the sheet edge. Its
+     `height` is in inches like a logo's, and the image is assumed square. */
   if (m.qr && m.qr.src) {
     const q = el("div", "qr");
     q.innerHTML = `<img src="${m.qr.src}" alt="QR code">` +
                   (m.qr.caption ? `<span>${mark(m.qr.caption)}</span>` : "");
-    logos.appendChild(q);
+    const size = (m.qr.height || 1.35) + "in";
+    q.firstChild.style.width = size;
+    q.firstChild.style.height = size;
+    logos.prepend(q);
   }
   row.appendChild(logos);
   h.appendChild(row);
